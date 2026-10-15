@@ -4,29 +4,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>互動電子繪本</title>
+<title>電子繪本</title>
 <style>
 * { box-sizing: border-box; }
 html, body {
+  margin: 0;
   width: 100%;
   height: 100%;
-  margin: 0;
   overflow: hidden;
   background: #000;
-}
-body {
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
 }
 #stage {
   position: relative;
   width: 100%;
-  height: 100%;
+  height: 100vh;
   height: 100dvh;
   overflow: hidden;
-  perspective: 2200px;
+  perspective: 1800px;
   background: #000;
-  touch-action: pan-y;
 }
 .surface {
   position: absolute;
@@ -34,15 +29,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
   background: #000;
+  overflow: hidden;
 }
 .surface video, .surface img {
-  display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
-  background: #000;
   pointer-events: none;
 }
 #under { z-index: 1; }
@@ -51,198 +44,174 @@ body {
   transform-style: preserve-3d;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  transform: translateX(0);
   transition: transform 650ms ease-in-out;
-  will-change: transform;
 }
-#sheet.turn-forward {
+#sheet.forward {
   transform-origin: left center;
   transform: rotateY(-180deg);
 }
-#sheet.turn-backward {
+#sheet.backward {
   transform-origin: right center;
   transform: rotateY(180deg);
 }
-.turn-zone {
+.turn {
   position: absolute;
   z-index: 5;
   top: 0;
   bottom: 0;
-  width: 18%;
-  padding: 0;
+  width: 20%;
   border: 0;
+  padding: 0;
   background: transparent;
-  cursor: pointer;
-  touch-action: manipulation;
 }
 #prev { left: 0; }
 #next { right: 0; }
-@media (prefers-reduced-motion: reduce) {
-  #sheet { transition-duration: 150ms; }
-}
 </style>
 </head>
 <body>
-<main id="stage" aria-label="互動電子繪本">
+<main id="stage">
   <div id="under" class="surface"></div>
   <div id="sheet" class="surface"></div>
-  <button id="prev" class="turn-zone" aria-label="上一頁"></button>
-  <button id="next" class="turn-zone" aria-label="下一頁"></button>
+  <button id="prev" class="turn" aria-label="上一頁"></button>
+  <button id="next" class="turn" aria-label="下一頁"></button>
 </main>
 
 <script>
 const pages = [
-  { type: "video", src: "cover.mp4.mp4" },
-  { type: "video", src: "page1.mp4.mp4" },
-  { type: "video", src: "page2.mp4.mp4" },
-  { type: "video", src: "page3.mp4.mp4" },
-  { type: "video", src: "page4.mp4.mp4" },
-  { type: "video", src: "page5.mp4.mp4" },
-  { type: "video", src: "page6.mp4.mp4" },
-  { type: "video", src: "page7.mp4.mp4" },
-  { type: "video", src: "page8.mp4.mp4" },
-  { type: "video", src: "page9.mp4.mp4" },
-  { type: "video", src: "page10.mp4.mp4" },
-  { type: "video", src: "page11.mp4.mp4" },
-  { type: "video", src: "page12.mp4.mp4" },
-  { type: "video", src: "page13.mp4.mp4" },
-  { type: "video", src: "page14.mp4.mp4" },
-  { type: "video", src: "page15.mp4.mp4" },
-  { type: "image", src: "page16.png.png" },
-  { type: "video", src: "backcover.mp4.mp4" }
+  ["video", "cover.mp4.mp4"],
+  ["video", "page1.mp4.mp4"],
+  ["video", "page2.mp4.mp4"],
+  ["video", "page3.mp4.mp4"],
+  ["video", "page4.mp4.mp4"],
+  ["video", "page5.mp4.mp4"],
+  ["video", "page6.mp4.mp4"],
+  ["video", "page7.mp4.mp4"],
+  ["video", "page8.mp4.mp4"],
+  ["video", "page9.mp4.mp4"],
+  ["video", "page10.mp4.mp4"],
+  ["video", "page11.mp4.mp4"],
+  ["video", "page12.mp4.mp4"],
+  ["video", "page13.mp4.mp4"],
+  ["video", "page14.mp4.mp4"],
+  ["video", "page15.mp4.mp4"],
+  ["image", "page16.png.png"],
+  ["video", "backcover.mp4.mp4"]
 ];
 
 const sheet = document.getElementById("sheet");
 const under = document.getElementById("under");
-let currentIndex = 0;
-let turning = false;
+let index = 0;
+let busy = false;
 let direction = 1;
 
-function createContent(page) {
-  if (page.type === "image") {
-    const img = document.createElement("img");
-    img.src = page.src;
-    img.alt = "繪本版權頁";
-    img.draggable = false;
-    return img;
-  }
+function makePage(i) {
+  if (i < 0 || i >= pages.length) return document.createElement("div");
 
-  const video = document.createElement("video");
-  video.src = page.src;
-  video.muted = true;
-  video.defaultMuted = true;
-  video.loop = false;
-  video.controls = false;
-  video.playsInline = true;
-  video.preload = "auto";
-  video.setAttribute("playsinline", "");
-  video.setAttribute("webkit-playsinline", "");
-  video.disablePictureInPicture = true;
-  video.addEventListener("contextmenu", e => e.preventDefault());
-  return video;
+  const [type, src] = pages[i];
+  const el = document.createElement(type === "image" ? "img" : "video");
+  el.src = src;
+
+  if (type === "image") {
+    el.alt = "繪本版權頁";
+  } else {
+    el.muted = true;
+    el.defaultMuted = true;
+    el.autoplay = false;
+    el.loop = false;
+    el.controls = false;
+    el.playsInline = true;
+    el.preload = "auto";
+    el.setAttribute("playsinline", "");
+    el.addEventListener("error", () => {
+      console.error("影片讀取失敗：" + src);
+    });
+  }
+  return el;
 }
 
-function showContent(container, index) {
-  if (index < 0 || index >= pages.length) {
-    container.replaceChildren();
-    return;
-  }
-  container.replaceChildren(createContent(pages[index]));
+function show(container, i) {
+  container.replaceChildren(makePage(i));
 }
 
-function playCurrentPage() {
+function playPage() {
   const video = sheet.querySelector("video");
   if (!video) return;
 
   video.currentTime = 0;
-  const result = video.play();
-  if (result && result.catch) result.catch(() => {});
+  const promise = video.play();
+  if (promise) promise.catch(() => {});
 }
 
-function pauseCurrentPage() {
-  const video = sheet.querySelector("video");
-  if (video) video.pause();
-}
+function turn(step) {
+  if (busy) return;
 
-function initialise() {
-  showContent(sheet, currentIndex);
-  showContent(under, currentIndex + 1);
-  playCurrentPage();
-}
-
-function turnPage(step) {
-  if (turning) return;
-
-  const target = currentIndex + step;
+  const target = index + step;
   if (target < 0 || target >= pages.length) return;
 
-  turning = true;
+  busy = true;
   direction = step;
-  pauseCurrentPage();
-  showContent(under, target);
 
+  const currentVideo = sheet.querySelector("video");
+  if (currentVideo) currentVideo.pause();
+
+  show(under, target);
   sheet.style.transition = "none";
-  sheet.classList.remove("turn-forward", "turn-backward");
-  sheet.style.transform = "translateX(0)";
+  sheet.classList.remove("forward", "backward");
+  sheet.style.transform = "rotateY(0deg)";
   void sheet.offsetWidth;
 
   sheet.style.transition = "";
-  sheet.classList.add(step > 0 ? "turn-forward" : "turn-backward");
+  sheet.classList.add(step > 0 ? "forward" : "backward");
 }
 
 sheet.addEventListener("transitionend", event => {
-  if (event.propertyName !== "transform" || !turning) return;
+  if (event.propertyName !== "transform" || !busy) return;
 
-  currentIndex += direction;
-
+  index += direction;
   sheet.style.transition = "none";
-  sheet.classList.remove("turn-forward", "turn-backward");
-  sheet.style.transform = "translateX(0)";
+  sheet.classList.remove("forward", "backward");
+  sheet.style.transform = "rotateY(0deg)";
   void sheet.offsetWidth;
 
-  showContent(sheet, currentIndex);
-  showContent(under, currentIndex + 1);
+  show(sheet, index);
+  show(under, index + 1);
   void sheet.offsetWidth;
   sheet.style.transition = "";
 
-  turning = false;
-  playCurrentPage();
+  busy = false;
+  playPage();
 });
 
-document.getElementById("prev").addEventListener("click", () => turnPage(-1));
-document.getElementById("next").addEventListener("click", () => turnPage(1));
+document.getElementById("next").addEventListener("click", () => turn(1));
+document.getElementById("prev").addEventListener("click", () => turn(-1));
 
 document.addEventListener("keydown", event => {
-  if (event.key === "ArrowRight" || event.key === "PageDown") {
-    event.preventDefault();
-    turnPage(1);
-  }
-  if (event.key === "ArrowLeft" || event.key === "PageUp") {
-    event.preventDefault();
-    turnPage(-1);
-  }
+  if (event.key === "ArrowRight" || event.key === "PageDown") turn(1);
+  if (event.key === "ArrowLeft" || event.key === "PageUp") turn(-1);
 });
 
-let touchStartX = 0;
-let touchStartY = 0;
+let startX = 0;
+let startY = 0;
 
 document.getElementById("stage").addEventListener("touchstart", event => {
   if (event.touches.length !== 1) return;
-  touchStartX = event.touches[0].clientX;
-  touchStartY = event.touches[0].clientY;
+  startX = event.touches[0].clientX;
+  startY = event.touches[0].clientY;
 }, { passive: true });
 
 document.getElementById("stage").addEventListener("touchend", event => {
   if (event.changedTouches.length !== 1) return;
-  const dx = event.changedTouches[0].clientX - touchStartX;
-  const dy = event.changedTouches[0].clientY - touchStartY;
+  const dx = event.changedTouches[0].clientX - startX;
+  const dy = event.changedTouches[0].clientY - startY;
 
   if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.3) {
-    turnPage(dx < 0 ? 1 : -1);
+    turn(dx < 0 ? 1 : -1);
   }
 }, { passive: true });
 
-initialise();
+show(sheet, index);
+show(under, index + 1);
+playPage();
 </script>
 </body>
 </html>
