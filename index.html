@@ -3,21 +3,33 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>電子繪本</title>
+
 <style>
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 html, body {
   margin: 0;
+  padding: 0;
   width: 100%;
   height: 100%;
   overflow: hidden;
   background: #000;
 }
 
+body {
+  overscroll-behavior: none;
+}
+
 #stage {
-  position: relative;
+  position: fixed;
+  inset: 0;
   width: 100%;
   height: 100vh;
   height: 100dvh;
@@ -36,43 +48,50 @@ html, body {
   overflow: hidden;
   background: #000;
   transform-origin: center;
+  will-change: transform, opacity;
 }
 
-#sheet video, #sheet img {
+#sheet video,
+#sheet img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
   pointer-events: none;
+  border: 0;
 }
 
 #sheet.enter-next {
-  animation: enterNext 150ms ease-out both;
+  animation: enterNext 100ms ease-out both;
 }
 
 #sheet.enter-prev {
-  animation: enterPrev 150ms ease-out both;
+  animation: enterPrev 100ms ease-out both;
 }
 
 @keyframes enterNext {
   from {
-    opacity: .65;
-    transform: perspective(1500px) rotateY(-10deg) translateX(3%);
+    opacity: .85;
+    transform: perspective(1500px)
+      rotateY(-5deg) translateX(1.5%);
   }
   to {
     opacity: 1;
-    transform: perspective(1500px) rotateY(0deg) translateX(0);
+    transform: perspective(1500px)
+      rotateY(0deg) translateX(0);
   }
 }
 
 @keyframes enterPrev {
   from {
-    opacity: .65;
-    transform: perspective(1500px) rotateY(10deg) translateX(-3%);
+    opacity: .85;
+    transform: perspective(1500px)
+      rotateY(5deg) translateX(-1.5%);
   }
   to {
     opacity: 1;
-    transform: perspective(1500px) rotateY(0deg) translateX(0);
+    transform: perspective(1500px)
+      rotateY(0deg) translateX(0);
   }
 }
 
@@ -91,16 +110,23 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
-#prev { left: 0; }
-#next { right: 0; }
+#prev {
+  left: 0;
+}
+
+#next {
+  right: 0;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  #sheet.enter-next, #sheet.enter-prev {
-    animation-duration: 100ms;
+  #sheet.enter-next,
+  #sheet.enter-prev {
+    animation-duration: 50ms;
   }
 }
 </style>
 </head>
+
 <body>
 <main id="stage" aria-label="互動電子繪本">
   <div id="sheet"></div>
@@ -140,31 +166,15 @@ let lastSwipeAt = 0;
 
 function renderPage(step = 0) {
   const [type, src] = pages[index];
-  const element = document.createElement(type === "image" ? "img" : "video");
 
-  element.src = src;
+  const element = document.createElement(
+    type === "image" ? "img" : "video"
+  );
 
-  if (type === "image") {
-    element.alt = "繪本版權頁";
-    element.draggable = false;
-  } else {
-    element.muted = true;
-    element.defaultMuted = true;
-    element.loop = false;
-    element.controls = false;
-    element.playsInline = true;
-    element.preload = "auto";
-    element.setAttribute("playsinline", "");
-    element.setAttribute("webkit-playsinline", "");
-
-    element.addEventListener("error", () => {
-      console.error("媒體載入失敗：", src);
-    });
-  }
-
-  // 每次換頁立即顯示新內容，不等待前一次動畫。
+  // 先把新頁面放進畫面，不等待影片播放完成。
   sheet.classList.remove("enter-next", "enter-prev");
   sheet.replaceChildren(element);
+
   void sheet.offsetWidth;
 
   if (step > 0) {
@@ -173,40 +183,80 @@ function renderPage(step = 0) {
     sheet.classList.add("enter-prev");
   }
 
-  if (type === "video") {
-    const playResult = element.play();
-    if (playResult && playResult.catch) {
-      playResult.catch(() => {});
-    }
+  if (type === "image") {
+    element.alt = "繪本版權頁";
+    element.draggable = false;
+    element.src = src;
+    return;
+  }
+
+  element.muted = true;
+  element.defaultMuted = true;
+  element.loop = false;
+  element.controls = false;
+  element.playsInline = true;
+  element.preload = "auto";
+  element.setAttribute("playsinline", "");
+  element.setAttribute("webkit-playsinline", "");
+  element.setAttribute("disablepictureinpicture", "");
+
+  element.addEventListener("error", () => {
+    console.error("媒體載入失敗：", src);
+  });
+
+  // 新頁面顯示後，立即載入並播放影片。
+  element.src = src;
+  element.load();
+
+  const playResult = element.play();
+
+  if (playResult && playResult.catch) {
+    playResult.catch(() => {});
   }
 }
 
 function turn(step) {
   const target = index + step;
-  if (target < 0 || target >= pages.length) return;
 
+  if (target < 0 || target >= pages.length) {
+    return;
+  }
+
+  // 不等待動畫結束，允許快速連續翻頁。
   index = target;
   renderPage(step);
 }
 
 // 點擊左右邊緣翻頁。
-document.getElementById("next").addEventListener("click", () => turn(1));
-document.getElementById("prev").addEventListener("click", () => turn(-1));
+document.getElementById("next").addEventListener("click", () => {
+  turn(1);
+});
 
-// 鍵盤左右鍵也可以翻頁。
+document.getElementById("prev").addEventListener("click", () => {
+  turn(-1);
+});
+
+// 鍵盤左右鍵翻頁。
 document.addEventListener("keydown", event => {
-  if (event.key === "ArrowRight" || event.key === "PageDown") {
+  if (
+    event.key === "ArrowRight" ||
+    event.key === "PageDown"
+  ) {
     event.preventDefault();
     turn(1);
-  } else if (event.key === "ArrowLeft" || event.key === "PageUp") {
+  } else if (
+    event.key === "ArrowLeft" ||
+    event.key === "PageUp"
+  ) {
     event.preventDefault();
     turn(-1);
   }
 });
 
-// 手指滑動翻頁。
+// 手指左右滑動翻頁。
 stage.addEventListener("touchstart", event => {
   if (event.touches.length !== 1) return;
+
   touchStartX = event.touches[0].clientX;
   touchStartY = event.touches[0].clientY;
 }, { passive: true });
@@ -217,19 +267,23 @@ stage.addEventListener("touchend", event => {
   const dx = event.changedTouches[0].clientX - touchStartX;
   const dy = event.changedTouches[0].clientY - touchStartY;
 
-  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+  if (
+    Math.abs(dx) > 50 &&
+    Math.abs(dx) > Math.abs(dy) * 1.2
+  ) {
     lastSwipeAt = Date.now();
     turn(dx < 0 ? 1 : -1);
   }
 }, { passive: true });
 
-// 避免滑動後瀏覽器額外產生的點擊造成連翻兩頁。
+// 避免滑動後額外的點擊造成連翻兩頁。
 stage.addEventListener("click", event => {
   if (Date.now() - lastSwipeAt < 500) {
     event.stopPropagation();
   }
 }, true);
 
+// 開啟繪本時顯示封面。
 renderPage();
 </script>
 </body>
