@@ -1,0 +1,303 @@
+
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title></title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+    }
+
+    body {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    #stage {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      perspective: 2200px;
+      background: #000;
+      touch-action: pan-y;
+    }
+
+    .surface {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      background: #000;
+    }
+
+    .surface video,
+    .surface img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+      pointer-events: none;
+    }
+
+    #under {
+      z-index: 1;
+    }
+
+    #sheet {
+      z-index: 2;
+      transform-style: preserve-3d;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      transform: translateX(0);
+      transition: transform 650ms ease-in-out;
+      will-change: transform;
+    }
+
+    #sheet.turn-forward {
+      transform-origin: left center;
+      transform: rotateY(-180deg);
+    }
+
+    #sheet.turn-backward {
+      transform-origin: right center;
+      transform: rotateY(180deg);
+    }
+
+    .turn-zone {
+      position: absolute;
+      z-index: 5;
+      top: 0;
+      bottom: 0;
+      width: 18%;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    #prev {
+      left: 0;
+      cursor: w-resize;
+    }
+
+    #next {
+      right: 0;
+      cursor: e-resize;
+    }
+
+    .turn-zone:focus-visible {
+      outline: 2px solid white;
+      outline-offset: -4px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #sheet {
+        transition-duration: 150ms;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main id="stage" aria-label="互動電子繪本">
+    <div id="under" class="surface"></div>
+    <div id="sheet" class="surface"></div>
+
+    <button id="prev" class="turn-zone" aria-label="上一頁"></button>
+    <button id="next" class="turn-zone" aria-label="下一頁"></button>
+  </main>
+
+  <script>
+    const pages = [
+      { type: "video", src: "cover.mp4" },
+      { type: "video", src: "page1.mp4" },
+      { type: "video", src: "page2.mp4" },
+      { type: "video", src: "page3.mp4" },
+      { type: "video", src: "page4.mp4" },
+      { type: "video", src: "page5.mp4" },
+      { type: "video", src: "page6.mp4" },
+      { type: "video", src: "page7.mp4" },
+      { type: "video", src: "page8.mp4" },
+      { type: "video", src: "page9.mp4" },
+      { type: "video", src: "page10.mp4" },
+      { type: "video", src: "page11.mp4" },
+      { type: "video", src: "page12.mp4" },
+      { type: "video", src: "page13.mp4" },
+      { type: "video", src: "page14.mp4" },
+      { type: "video", src: "page15.mp4" },
+      { type: "image", src: "page16.png" },
+      { type: "video", src: "backcover.mp4" }
+    ];
+
+    const sheet = document.getElementById("sheet");
+    const under = document.getElementById("under");
+    const prevButton = document.getElementById("prev");
+    const nextButton = document.getElementById("next");
+
+    let currentIndex = 0;
+    let turning = false;
+    let direction = 1;
+
+    function createContent(page) {
+      if (page.type === "image") {
+        const img = document.createElement("img");
+        img.src = page.src;
+        img.alt = "繪本版權頁";
+        img.draggable = false;
+        return img;
+      }
+
+      const video = document.createElement("video");
+      video.src = page.src;
+      video.autoplay = false;
+      video.muted = true;
+      video.defaultMuted = true;
+      video.loop = false;
+      video.controls = false;
+      video.playsInline = true;
+      video.preload = "auto";
+      video.setAttribute("playsinline", "");
+      video.setAttribute("webkit-playsinline", "");
+      video.disablePictureInPicture = true;
+
+      video.addEventListener("contextmenu", event => {
+        event.preventDefault();
+      });
+
+      return video;
+    }
+
+    function showContent(container, index) {
+      if (index < 0 || index >= pages.length) {
+        container.replaceChildren();
+        return;
+      }
+
+      container.replaceChildren(createContent(pages[index]));
+    }
+
+    function playCurrentPage() {
+      const video = sheet.querySelector("video");
+
+      if (!video) return;
+
+      video.currentTime = 0;
+
+      const result = video.play();
+      if (result && typeof result.catch === "function") {
+        result.catch(() => {
+          // 部分瀏覽器可能需要使用者再次操作才能播放。
+        });
+      }
+    }
+
+    function pauseCurrentPage() {
+      const video = sheet.querySelector("video");
+      if (video) video.pause();
+    }
+
+    function initialise() {
+      showContent(sheet, currentIndex);
+      showContent(under, currentIndex + 1);
+      playCurrentPage();
+    }
+
+    function turnPage(step) {
+      if (turning) return;
+
+      const target = currentIndex + step;
+      if (target < 0 || target >= pages.length) return;
+
+      turning = true;
+      direction = step;
+      pauseCurrentPage();
+
+      showContent(under, target);
+
+      sheet.style.transition = "none";
+      sheet.classList.remove("turn-forward", "turn-backward");
+      sheet.style.transform = "translateX(0)";
+      void sheet.offsetWidth;
+
+      sheet.style.transition = "";
+      sheet.classList.add(
+        step > 0 ? "turn-forward" : "turn-backward"
+      );
+    }
+
+    sheet.addEventListener("transitionend", event => {
+      if (event.propertyName !== "transform" || !turning) return;
+
+      currentIndex += direction;
+
+      sheet.style.transition = "none";
+      sheet.classList.remove("turn-forward", "turn-backward");
+      sheet.style.transform = "translateX(0)";
+      void sheet.offsetWidth;
+
+      showContent(sheet, currentIndex);
+      showContent(under, currentIndex + 1);
+
+      void sheet.offsetWidth;
+      sheet.style.transition = "";
+
+      turning = false;
+      playCurrentPage();
+    });
+
+    prevButton.addEventListener("click", () => turnPage(-1));
+    nextButton.addEventListener("click", () => turnPage(1));
+
+    document.addEventListener("keydown", event => {
+      if (event.key === "ArrowRight" || event.key === "PageDown") {
+        event.preventDefault();
+        turnPage(1);
+      }
+
+      if (event.key === "ArrowLeft" || event.key === "PageUp") {
+        event.preventDefault();
+        turnPage(-1);
+      }
+    });
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+
+    document.getElementById("stage").addEventListener("touchstart", event => {
+      if (event.touches.length !== 1) return;
+      touchStartX = event.touches[0].clientX;
+      touchStartY = event.touches[0].clientY;
+    }, { passive: true });
+
+    document.getElementById("stage").addEventListener("touchend", event => {
+      if (event.changedTouches.length !== 1) return;
+
+      const dx = event.changedTouches[0].clientX - touchStartX;
+      const dy = event.changedTouches[0].clientY - touchStartY;
+
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+        turnPage(dx < 0 ? 1 : -1);
+      }
+    }, { passive: true });
+
+    initialise();
+  </script>
+</body>
+</html>
